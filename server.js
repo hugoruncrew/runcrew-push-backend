@@ -146,7 +146,7 @@ app.post('/api/follow', async (req, res) => {
         .from('notifications')
         .insert({
           user_id: following_id,
-          type: 'new_follower',
+          type: 'follow',
           seen: false,
           payload: {
             follower_id: follower_id,
@@ -154,7 +154,8 @@ app.post('/api/follow', async (req, res) => {
               ? `${followerProfile.first_name} ${followerProfile.last_name || ''}`.trim()
               : followerProfile?.username || 'Someone',
             follower_avatar_url: followerProfile?.avatar_url || null
-          }
+          },
+          pushed: false
         });
     } catch (notifError) {
       console.error('Error inserting notification record:', notifError);
