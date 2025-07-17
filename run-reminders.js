@@ -121,8 +121,9 @@ async function sendRemindersForRun(run, reminderType) {
       tokensByUser[t.user_id].push(t.token);
     });
 
-    // Create notification messages
+    // Create notification messages and notifications
     const messages = [];
+    const notifications = [];
     const runDate = new Date(run.run_date);
     const formattedDate = runDate.toLocaleDateString('en-US', { 
       weekday: 'long', 
@@ -149,7 +150,7 @@ async function sendRemindersForRun(run, reminderType) {
 
       // Create notification record
       console.log(`Creating notification for user ${attendee.user_id} for run ${run.id}`);
-      const { error: notifError } = await supabase
+      const { data: notification, error: notifError } = await supabase
         .from('notifications')
         .insert({
           user_id: attendee.user_id,
@@ -164,12 +165,15 @@ async function sendRemindersForRun(run, reminderType) {
             reminder_type: reminderType
           },
           pushed: false
-        });
+        })
+        .select()
+        .single();
       
       if (notifError) {
         console.error(`Error creating notification for user ${attendee.user_id}:`, notifError);
       } else {
         console.log(`Successfully created notification for user ${attendee.user_id}`);
+        notifications.push(notification);
       }
 
       // Create push notification messages
@@ -226,6 +230,21 @@ async function sendRemindersForRun(run, reminderType) {
         errors: errors.length,
         errors
       });
+
+      // Update notifications to pushed: true if push was successful
+      if (errors.length === 0 && notifications.length > 0) {
+        const notificationIds = notifications.map(n => n.id);
+        const { error: updateError } = await supabase
+          .from('notifications')
+          .update({ pushed: true })
+          .in('id', notificationIds);
+        
+        if (updateError) {
+          console.error(`Error updating notifications to pushed: true:`, updateError);
+        } else {
+          console.log(`Successfully updated ${notifications.length} notifications to pushed: true`);
+        }
+      }
     }
 
   } catch (error) {
