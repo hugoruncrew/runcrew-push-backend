@@ -99,6 +99,8 @@ async function sendRemindersForRun(run, reminderType) {
 
     // Get push tokens for all attendees
     const userIds = attendees.map(a => a.user_id);
+    console.log(`Looking for push tokens for user IDs:`, userIds);
+    
     const { data: tokens, error: tokensError } = await supabase
       .from('device_push_tokens')
       .select('user_id, token')
@@ -108,6 +110,8 @@ async function sendRemindersForRun(run, reminderType) {
       console.error('Error fetching push tokens:', tokensError);
       return;
     }
+    
+    console.log(`Found ${tokens.length} push tokens:`, tokens);
 
     // Group tokens by user
     const tokensByUser = {};
@@ -145,7 +149,8 @@ async function sendRemindersForRun(run, reminderType) {
       }
 
       // Create notification record
-      await supabase
+      console.log(`Creating notification for user ${attendee.user_id} for run ${run.id}`);
+      const { error: notifError } = await supabase
         .from('notifications')
         .insert({
           user_id: attendee.user_id,
@@ -161,6 +166,12 @@ async function sendRemindersForRun(run, reminderType) {
           },
           pushed: false
         });
+      
+      if (notifError) {
+        console.error(`Error creating notification for user ${attendee.user_id}:`, notifError);
+      } else {
+        console.log(`Successfully created notification for user ${attendee.user_id}`);
+      }
 
       // Create push notification messages
       userTokens.forEach(token => {
