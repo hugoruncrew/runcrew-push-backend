@@ -2,6 +2,7 @@ const express = require('express');
 const { Expo } = require('expo-server-sdk');
 const { createClient } = require('@supabase/supabase-js');
 const cors = require('cors');
+const { sendRunReminders } = require('./run-reminders');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -170,6 +171,41 @@ app.post('/api/follow', async (req, res) => {
 
   } catch (error) {
     console.error('Error in follow handler:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+// Run reminder endpoints
+app.post('/api/reminders/day-before', async (req, res) => {
+  try {
+    console.log('Triggering day-before run reminders...');
+    await sendRunReminders('day_before');
+    res.json({
+      success: true,
+      message: 'Day-before run reminders sent'
+    });
+  } catch (error) {
+    console.error('Error sending day-before reminders:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+app.post('/api/reminders/hour-before', async (req, res) => {
+  try {
+    console.log('Triggering hour-before run reminders...');
+    await sendRunReminders('hour_before');
+    res.json({
+      success: true,
+      message: 'Hour-before run reminders sent'
+    });
+  } catch (error) {
+    console.error('Error sending hour-before reminders:', error);
     res.status(500).json({
       error: 'Internal server error',
       message: error.message

@@ -9,6 +9,8 @@
     "@supabase/supabase-js": "^2.39.0"
   },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "reminders:day-before": "node run-reminders.js day_before",
+    "reminders:hour-before": "node run-reminders.js hour_before"
   }
 } 
