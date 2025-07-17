@@ -18,36 +18,26 @@ async function sendRunReminders(reminderType = 'day_before') {
     console.log(`Starting ${reminderType} run reminders...`);
     
     const now = new Date();
-    let targetTime;
     let timeFilter;
     
     if (reminderType === 'day_before') {
-      // Find runs happening tomorrow
-      const tomorrow = new Date(now);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0, 0, 0, 0);
+      // Find runs starting in the next 24 hours (between now and 24 hours from now)
+      const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const fortyEightHoursFromNow = new Date(now.getTime() + 48 * 60 * 60 * 1000);
       
-      const dayAfterTomorrow = new Date(tomorrow);
-      dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
-      
-      targetTime = tomorrow;
-      // Format dates as YYYY-MM-DD for run_date comparison
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
-      const dayAfterTomorrowStr = dayAfterTomorrow.toISOString().split('T')[0];
-      timeFilter = `run_date >= '${tomorrowStr}' AND run_date < '${dayAfterTomorrowStr}'`;
+      timeFilter = `start_time >= '${twentyFourHoursFromNow.toISOString()}' AND start_time < '${fortyEightHoursFromNow.toISOString()}'`;
     } else if (reminderType === 'hour_before') {
-      // Find runs happening in the next hour
+      // Find runs starting in the next hour
       const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
       const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
       
-      targetTime = oneHourFromNow;
-      // For hour-before, we need to check start_time instead of run_date
-      const oneHourFromNowStr = oneHourFromNow.toISOString();
-      const twoHoursFromNowStr = twoHoursFromNow.toISOString();
-      timeFilter = `start_time >= '${oneHourFromNowStr}' AND start_time < '${twoHoursFromNowStr}'`;
+      timeFilter = `start_time >= '${oneHourFromNow.toISOString()}' AND start_time < '${twoHoursFromNow.toISOString()}'`;
     } else {
       throw new Error('Invalid reminder type');
     }
+
+    console.log(`Time filter: ${timeFilter}`);
+    console.log(`Current time: ${now.toISOString()}`);
 
     // Get all runs that match the time criteria
     const { data: runs, error: runsError } = await supabase
@@ -69,7 +59,7 @@ async function sendRunReminders(reminderType = 'day_before') {
       return;
     }
 
-    console.log(`Found ${runs.length} runs for ${reminderType} reminders`);
+    console.log(`Found ${runs.length} runs for ${reminderType} reminders:`, runs.map(r => ({ id: r.id, title: r.title, start_time: r.start_time })));
 
     // For each run, get attendees and send notifications
     for (const run of runs) {
@@ -147,8 +137,8 @@ async function sendRemindersForRun(run, reminderType) {
 
       let title, body;
       if (reminderType === 'day_before') {
-        title = '🏃‍♂️ Run Tomorrow!';
-        body = `Don't forget: ${run.title} tomorrow at ${formattedTime}`;
+        title = '🏃‍♂️ Run in 24 Hours!';
+        body = `Don't forget: ${run.title} in 24 hours at ${formattedTime}`;
       } else {
         title = '⏰ Run in 1 Hour!';
         body = `Your run "${run.title}" starts in 1 hour`;
