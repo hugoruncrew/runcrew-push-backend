@@ -99,7 +99,7 @@ app.post('/api/follow', async (req, res) => {
             type: 'new_follower',
             follower_id: follower_id,
             screen: 'Runner',
-            params: JSON.stringify({ runnerId: follower_id })
+            runnerId: follower_id
           }
         }));
 
