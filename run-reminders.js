@@ -62,8 +62,7 @@ async function sendRunReminders(reminderType = 'day_before') {
           logo_url
         )
       `)
-      .filter(timeFilter)
-      .eq('status', 'active');
+      .filter(timeFilter);
 
     if (runsError) {
       console.error('Error fetching runs:', runsError);
