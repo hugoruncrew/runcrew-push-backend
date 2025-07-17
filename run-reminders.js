@@ -31,14 +31,20 @@ async function sendRunReminders(reminderType = 'day_before') {
       dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
       
       targetTime = tomorrow;
-      timeFilter = `run_date >= '${tomorrow.toISOString()}' AND run_date < '${dayAfterTomorrow.toISOString()}'`;
+      // Format dates as YYYY-MM-DD for run_date comparison
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      const dayAfterTomorrowStr = dayAfterTomorrow.toISOString().split('T')[0];
+      timeFilter = `run_date >= '${tomorrowStr}' AND run_date < '${dayAfterTomorrowStr}'`;
     } else if (reminderType === 'hour_before') {
       // Find runs happening in the next hour
       const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
       const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
       
       targetTime = oneHourFromNow;
-      timeFilter = `run_date >= '${oneHourFromNow.toISOString()}' AND run_date < '${twoHoursFromNow.toISOString()}'`;
+      // For hour-before, we need to check start_time instead of run_date
+      const oneHourFromNowStr = oneHourFromNow.toISOString();
+      const twoHoursFromNowStr = twoHoursFromNow.toISOString();
+      timeFilter = `start_time >= '${oneHourFromNowStr}' AND start_time < '${twoHoursFromNowStr}'`;
     } else {
       throw new Error('Invalid reminder type');
     }
