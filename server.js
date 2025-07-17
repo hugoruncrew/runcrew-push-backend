@@ -369,6 +369,86 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Push notification server is running' });
 });
 
+// Debug endpoint to test run reminder logic
+app.get('/api/debug/run-reminders', async (req, res) => {
+  try {
+    const now = new Date();
+    const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+    const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    
+    const timeFilter = `start_time >= '${oneHourFromNow.toISOString()}' AND start_time < '${twoHoursFromNow.toISOString()}'`;
+    
+    console.log('Debug - Current time:', now.toISOString());
+    console.log('Debug - One hour from now:', oneHourFromNow.toISOString());
+    console.log('Debug - Two hours from now:', twoHoursFromNow.toISOString());
+    console.log('Debug - Time filter:', timeFilter);
+    
+    // Get all runs that match the time criteria
+    const { data: runs, error: runsError } = await supabase
+      .from('runs')
+      .select(`
+        id,
+        title,
+        run_date,
+        start_time
+      `)
+      .filter(timeFilter);
+    
+    if (runsError) {
+      console.error('Debug - Error fetching runs:', runsError);
+      return res.status(500).json({ error: runsError });
+    }
+    
+    console.log('Debug - Found runs:', runs);
+    
+    // For each run, check attendees
+    const runDetails = [];
+    for (const run of runs) {
+      const { data: attendees, error: attendeesError } = await supabase
+        .from('run_attendees')
+        .select('user_id')
+        .eq('run_id', run.id);
+      
+      if (attendeesError) {
+        console.error('Debug - Error fetching attendees for run', run.id, ':', attendeesError);
+        continue;
+      }
+      
+      // Get push tokens for attendees
+      const userIds = attendees.map(a => a.user_id);
+      const { data: tokens, error: tokensError } = await supabase
+        .from('device_push_tokens')
+        .select('user_id, token')
+        .in('user_id', userIds);
+      
+      if (tokensError) {
+        console.error('Debug - Error fetching tokens:', tokensError);
+        continue;
+      }
+      
+      runDetails.push({
+        run: run,
+        attendees: attendees,
+        tokens: tokens
+      });
+    }
+    
+    res.json({
+      currentTime: now.toISOString(),
+      oneHourFromNow: oneHourFromNow.toISOString(),
+      twoHoursFromNow: twoHoursFromNow.toISOString(),
+      timeFilter: timeFilter,
+      runsFound: runs.length,
+      runs: runs,
+      runDetails: runDetails
+    });
+    
+  } catch (error) {
+    console.error('Debug - Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Push notification server running at http://localhost:${port}`);
   console.log(`Test endpoint: http://localhost:${port}/api/send-push`);
