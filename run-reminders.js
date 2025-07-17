@@ -23,19 +23,24 @@ async function sendRunReminders(reminderType = 'day_before') {
     let oneHourFromNow, twoHoursFromNow;
     
     if (reminderType === 'day_before') {
-      // Find runs starting in the next 24 hours (between now and 24 hours from now)
-      oneHourFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      twoHoursFromNow = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+      // Find runs starting in exactly 24 hours (with 5 minute tolerance)
+      const targetTime = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const tolerance = 5 * 60 * 1000; // 5 minutes
+      oneHourFromNow = new Date(targetTime.getTime() - tolerance);
+      twoHoursFromNow = new Date(targetTime.getTime() + tolerance);
     } else if (reminderType === 'hour_before') {
-      // Find runs starting in the next hour
-      oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
-      twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+      // Find runs starting in exactly 1 hour (with 5 minute tolerance)
+      const targetTime = new Date(now.getTime() + 60 * 60 * 1000);
+      const tolerance = 5 * 60 * 1000; // 5 minutes
+      oneHourFromNow = new Date(targetTime.getTime() - tolerance);
+      twoHoursFromNow = new Date(targetTime.getTime() + tolerance);
     } else {
       throw new Error('Invalid reminder type');
     }
 
     console.log(`Current time: ${now.toISOString()}`);
-    console.log(`Looking for runs between: ${oneHourFromNow.toISOString()} and ${twoHoursFromNow.toISOString()}`);
+    console.log(`Looking for runs starting at exactly ${reminderType === 'day_before' ? '24 hours' : '1 hour'} from now (with 5 min tolerance):`);
+    console.log(`Time range: ${oneHourFromNow.toISOString()} to ${twoHoursFromNow.toISOString()}`);
 
     // Get all runs that match the time criteria
     const { data: runs, error: runsError } = await supabase
