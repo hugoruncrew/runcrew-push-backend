@@ -19,6 +19,15 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 app.use(cors());
 app.use(express.json());
 
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "Push notification server is running",
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Follow user endpoint with push notification
 app.post('/api/follow', async (req, res) => {
   try {
@@ -670,9 +679,227 @@ app.get('/api/debug/run-reminders', async (req, res) => {
   }
 });
 
+
+// Club run announcement endpoint with push notification
+app.post("/api/club-run-announcement", async (req, res) => {
+  try {
+    const { run_id, club_id, created_by } = req.body;
+
+    console.log("Club run announcement request:", { run_id, club_id, created_by });
+
+    // Validate required fields
+    if (!run_id || !club_id || !created_by) {
+      return res.status(400).json({
+        error: "Missing required fields: run_id, club_id, created_by"
+      });
+    }
+
+    // 1. Get run details
+    const { data: runData, error: runError } = await supabase
+      .from("runs")
+      .select("title, run_date, location, start_time, is_public")
+      .eq("id", run_id)
+      .single();
+
+    if (runError || !runData) {
+      console.error("Error fetching run data:", runError);
+      return res.status(400).json({
+        error: "Failed to fetch run data",
+        details: runError?.message
+      });
+    }
+
+    // Only send notifications for public runs
+    if (!runData.is_public) {
+      return res.json({
+        success: true,
+        message: "Run is not public, no notifications sent",
+        run_id,
+        club_id
+      });
+    }
+
+    // 2. Get club details
+    const { data: clubData, error: clubError } = await supabase
+      .from("clubs")
+      .select("name")
+      .eq("id", club_id)
+      .single();
+
+    if (clubError) {
+      console.error("Error fetching club data:", clubError);
+    }
+
+    const clubName = clubData?.name || "A club";
+
+    // 3. Get all club followers
+    const { data: followers, error: followersError } = await supabase
+      .from("user_club_follows")
+      .select("user_id")
+      .eq("club_id", club_id);
+
+    if (followersError) {
+      console.error("Error fetching club followers:", followersError);
+      return res.status(400).json({
+        error: "Failed to fetch club followers",
+        details: followersError.message
+      });
+    }
+
+    console.log(`Found ${followers.length} followers for club ${club_id}`);
+
+    // 4. Send notifications to each follower
+    let notificationCount = 0;
+    let pushNotificationCount = 0;
+
+    for (const follower of followers) {
+      // Check if user has enabled club run announcements
+      const { data: preferences, error: prefError } = await supabase
+        .from("notification_preferences")
+        .select("club_run_announcements")
+        .eq("user_id", follower.user_id)
+        .single();
+
+      // Default to true if no preference is set
+      const shouldNotify = preferences?.club_run_announcements !== false;
+
+      if (!shouldNotify) {
+        console.log(`Skipping notification for user ${follower.user_id} - club_run_announcements disabled`);
+        continue;
+      }
+
+      // 5. Insert notification record
+      // Check if notification already exists for this run and user
+      const { data: existingNotification, error: existingError } = await supabase
+        .from("notifications")
+        .select("id")
+        .eq("user_id", follower.user_id)
+        .eq("type", "club_run_announcement")
+        .eq("payload->run_id", run_id)
+        .single();
+
+      if (existingNotification) {
+        console.log(`Notification already exists for user ${follower.user_id} and run ${run_id}, skipping`);
+        continue;
+      }
+      try {
+        await supabase
+          .from("notifications")
+          .insert({
+            user_id: follower.user_id,
+            type: "club_run_announcement",
+            seen: false,
+            payload: {
+              club_id: club_id,
+              club_name: clubName,
+              run_id: run_id,
+              run_title: runData.title,
+              run_date: runData.run_date,
+              location: runData.location,
+              start_time: runData.start_time
+            },
+            pushed: false
+          });
+        notificationCount++;
+      } catch (notifError) {
+        console.error("Error inserting notification record:", notifError);
+      }
+
+      // 6. Get device push tokens for the follower
+      const { data: tokens, error: tokenError } = await supabase
+        .from("device_push_tokens")
+        .select("token")
+        .eq("user_id", follower.user_id);
+
+      if (tokenError) {
+        console.error("Error fetching push tokens:", tokenError);
+        continue;
+      }
+
+      // 7. Send push notification if tokens exist
+      if (tokens && tokens.length > 0) {
+        const validTokens = tokens
+          .map(t => t.token)
+          .filter(token => Expo.isExpoPushToken(token));
+
+        if (validTokens.length > 0) {
+          const messages = validTokens.map(token => ({
+            to: token,
+            sound: "default",
+            title: "🏃‍♂️ New Run Available!",
+            body: `${clubName} has added a new run: ${runData.title || "Untitled Run"}`,
+            data: {
+              type: "club_run_announcement",
+              clubId: club_id,
+              runId: run_id,
+              screen: "Run",
+              params: { runId: run_id }
+            }
+          }));
+
+          console.log(`Sending club run notification to user ${follower.user_id} with ${validTokens.length} tokens`);
+
+          // Send messages in chunks
+          const chunks = expo.chunkPushNotifications(messages);
+          const tickets = [];
+
+          for (const chunk of chunks) {
+            try {
+              const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+              tickets.push(...ticketChunk);
+            } catch (error) {
+              console.error("Error sending notification chunk:", error);
+              tickets.push(...chunk.map(() => ({ error })));
+            }
+          }
+
+          // Log results
+          const errors = tickets
+            .map((ticket, index) => {
+              if (ticket.error) {
+                return {
+                  token: validTokens[index],
+                  error: ticket.error
+                };
+              }
+              return null;
+            })
+            .filter(Boolean);
+
+          console.log("Club run notification results:", {
+            user_id: follower.user_id,
+            total: tickets.length,
+            errors: errors.length,
+            errors
+          });
+
+          pushNotificationCount += tickets.length - errors.length;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Club run announcement sent",
+      run_id,
+      club_id,
+      followers_count: followers.length,
+      notifications_created: notificationCount,
+      push_notifications_sent: pushNotificationCount
+    });
+
+  } catch (error) {
+    console.error("Error in club run announcement handler:", error);
+    res.status(500).json({
+      error: "Internal server error",
+      message: error.message
+    });
+  }
+});
 app.listen(port, () => {
   console.log(`Push notification server running at http://localhost:${port}`);
   console.log(`Test endpoint: http://localhost:${port}/api/send-push`);
   console.log(`Follow endpoint: http://localhost:${port}/api/follow`);
   console.log(`Unfollow endpoint: http://localhost:${port}/api/unfollow`);
+  console.log(`Club run announcement endpoint: http://localhost:${port}/api/club-run-announcement`);
 }); 
