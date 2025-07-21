@@ -408,6 +408,182 @@ app.post('/api/club-run-announcement', async (req, res) => {
   }
 });
 
+// Complete run endpoint with push notifications
+app.post('/api/complete-run', async (req, res) => {
+  try {
+    const { run_id, host_id } = req.body;
+
+    console.log('Complete run request:', { run_id, host_id });
+
+    // Validate required fields
+    if (!run_id || !host_id) {
+      return res.status(400).json({
+        error: 'Missing required fields: run_id, host_id'
+      });
+    }
+
+    // 1. Verify the host is authorized (check if they are the host of the run)
+    const { data: runData, error: runError } = await supabase
+      .from('runs')
+      .select('id, title, host_id')
+      .eq('id', run_id)
+      .single();
+
+    if (runError || !runData) {
+      console.error('Error fetching run data:', runError);
+      return res.status(404).json({
+        error: 'Run not found',
+        details: runError?.message
+      });
+    }
+
+    if (runData.host_id !== host_id) {
+      return res.status(403).json({
+        error: 'Unauthorized: Only the host can complete the run'
+      });
+    }
+
+    // 2. Get all checked-in, not yet completed attendees
+    const { data: attendees, error: attendeesError } = await supabase
+      .from('run_attendees')
+      .select('user_id')
+      .eq('run_id', run_id)
+      .eq('checked_in', true)
+      .eq('completed', false);
+
+    if (attendeesError) {
+      console.error('Error fetching attendees:', attendeesError);
+      return res.status(400).json({
+        error: 'Failed to fetch attendees',
+        details: attendeesError.message
+      });
+    }
+
+    if (!attendees || attendees.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No checked-in attendees to mark as completed',
+        run_id,
+        attendees_completed: 0,
+        notifications_sent: 0
+      });
+    }
+
+    const userIds = attendees.map(a => a.user_id);
+    console.log(`Found ${userIds.length} attendees to mark as completed`);
+
+    // 3. Mark all as completed
+    const { error: updateError } = await supabase
+      .from('run_attendees')
+      .update({ completed: true })
+      .eq('run_id', run_id)
+      .in('user_id', userIds)
+      .eq('checked_in', true)
+      .eq('completed', false);
+
+    if (updateError) {
+      console.error('Error updating attendees:', updateError);
+      return res.status(400).json({
+        error: 'Failed to mark attendees as completed',
+        details: updateError.message
+      });
+    }
+
+    // 4. Send push notifications to each completed attendee
+    let notificationsSent = 0;
+    const notificationErrors = [];
+
+    for (const userId of userIds) {
+      try {
+        // Get device push tokens for the user
+        const { data: tokens, error: tokenError } = await supabase
+          .from('device_push_tokens')
+          .select('token')
+          .eq('user_id', userId);
+
+        if (tokenError) {
+          console.error('Error fetching tokens for user', userId, tokenError);
+          continue;
+        }
+
+        if (!tokens || tokens.length === 0) {
+          console.log(`No push tokens for user ${userId}`);
+          continue;
+        }
+
+        const validTokens = tokens
+          .map(t => t.token)
+          .filter(token => Expo.isExpoPushToken(token));
+
+        if (validTokens.length === 0) {
+          console.log(`No valid Expo tokens for user ${userId}`);
+          continue;
+        }
+
+        // Create notification messages
+        const messages = validTokens.map(token => ({
+          to: token,
+          sound: 'default',
+          title: '🎉 Run Completed!',
+          body: `Congrats on completing ${runData.title || 'the run'}!`,
+          data: {
+            type: 'run_completed',
+            runId: run_id,
+            screen: 'Activity'
+          }
+        }));
+
+        console.log(`Sending run completion notification to user ${userId} with ${validTokens.length} tokens`);
+
+        // Send messages in chunks
+        const chunks = expo.chunkPushNotifications(messages);
+        const tickets = [];
+
+        for (const chunk of chunks) {
+          try {
+            const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+            tickets.push(...ticketChunk);
+          } catch (error) {
+            console.error('Error sending notification chunk:', error);
+            notificationErrors.push({ userId, error: error.message });
+          }
+        }
+
+        // Log results
+        const errors = tickets.filter(ticket => ticket.error);
+        if (errors.length > 0) {
+          console.error('Notification errors for user', userId, errors);
+          notificationErrors.push({ userId, errors });
+        } else {
+          notificationsSent++;
+        }
+
+      } catch (error) {
+        console.error('Error processing notifications for user', userId, error);
+        notificationErrors.push({ userId, error: error.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Run completed successfully',
+      run_id,
+      run_title: runData.title,
+      attendees_completed: userIds.length,
+      notifications_sent: notificationsSent,
+      notification_errors: notificationErrors.length,
+      errors: notificationErrors
+    });
+
+  } catch (error) {
+    console.error('Error in complete run handler:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
 // Run reminder endpoints
 app.post('/api/reminders/day-before', async (req, res) => {
   try {
