@@ -425,7 +425,7 @@ app.post('/api/complete-run', async (req, res) => {
     // 1. Verify the host is authorized (check if they are the host of the run)
     const { data: runData, error: runError } = await supabase
       .from('runs')
-      .select('id, title, host_id')
+      .select('id, title, created_by')
       .eq('id', run_id)
       .single();
 
@@ -437,7 +437,7 @@ app.post('/api/complete-run', async (req, res) => {
       });
     }
 
-    if (runData.host_id !== host_id) {
+    if (runData.created_by !== host_id) {
       return res.status(403).json({
         error: 'Unauthorized: Only the host can complete the run'
       });
