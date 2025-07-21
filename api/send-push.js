@@ -22,7 +22,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId, title, body, data, tokens } = req.body;
+    const { userId, title, body, data, tokens, notificationType } = req.body;
+
+    if (notificationType === 'run_completed') {
+      console.log('Handling run_completed notification:', {
+        userId, title, body, data, tokenCount: tokens?.length || 0
+      });
+    }
 
     console.log('Received push notification request:', {
       userId,
