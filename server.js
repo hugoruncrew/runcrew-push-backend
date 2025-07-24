@@ -12,8 +12,8 @@ const port = process.env.PORT || 3001;
 const expo = new Expo();
 
 // Initialize Supabase client
-const supabaseUrl = 'https://ujmbtqyqwiqfblnerahv.supabase.co';
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqbWJ0cXlxd2lxZmJsbmVyYWh2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NjkxODg3MCwiZXhwIjoyMDYyNDk0ODcwfQ.-7tnjlZsRMVjrxaHglSlE9jGzcqRrjKIvgLRDcpLWi8'; // You'll need to get the service role key from Supabase dashboard
+const supabaseUrl = process.env.SUPABASE_URL || 'https://ujmbtqyqwiqfblnerahv.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'sbp_a2b8ff89eacce00aa38f49836a7176337969eb9b';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Middleware
