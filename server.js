@@ -3,6 +3,7 @@ const { Expo } = require('expo-server-sdk');
 const { createClient } = require('@supabase/supabase-js');
 const cors = require('cors');
 const { sendRunReminders } = require('./run-reminders');
+const waitlistSignup = require('./api/waitlist-signup');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -18,6 +19,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/api', waitlistSignup);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
